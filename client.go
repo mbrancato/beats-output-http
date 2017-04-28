@@ -1,7 +1,6 @@
 package http
 
 import (
-	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/libbeat/logp"
+	"github.com/elastic/beats/libbeat/monitoring"
 	"github.com/elastic/beats/libbeat/outputs"
 	"github.com/elastic/beats/libbeat/outputs/outil"
 	"github.com/elastic/beats/libbeat/outputs/transport"
@@ -50,14 +50,14 @@ type Connection struct {
 
 // Metrics that can retrieved through the expvar web interface.
 var (
-	ackedEvents            = expvar.NewInt("libbeatHttpPublishedAndAckedEvents")
-	eventsNotAcked         = expvar.NewInt("libbeatHttpPublishedButNotAckedEvents")
-	publishEventsCallCount = expvar.NewInt("libbeatHttpPublishEventsCallCount")
+	ackedEvents            = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishedAndAckedEvents")
+	eventsNotAcked         = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishedButNotAckedEvents")
+	publishEventsCallCount = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishEventsCallCount")
 
-	statReadBytes   = expvar.NewInt("libbeatHttpPublishReadBytes")
-	statWriteBytes  = expvar.NewInt("libbeatHttpPublishWriteBytes")
-	statReadErrors  = expvar.NewInt("libbeatHttpPublishReadErrors")
-	statWriteErrors = expvar.NewInt("libbeatHttpPublishWriteErrors")
+	statReadBytes   = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishReadBytes")
+	statWriteBytes  = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishWriteBytes")
+	statReadErrors  = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishReadErrors")
+	statWriteErrors = monitoring.NewInt(outputs.Metrics, "libbeatHttpPublishWriteErrors")
 )
 
 func NewClient(
@@ -85,6 +85,8 @@ func NewClient(
 		Write:       statWriteBytes,
 		ReadErrors:  statReadErrors,
 		WriteErrors: statWriteErrors,
+		OutputsWrite:       outputs.WriteBytes,
+		OutputsWriteErrors: outputs.WriteErrors,
 	}
 	dialer = transport.StatsDialer(dialer, iostats)
 	tlsDialer = transport.StatsDialer(tlsDialer, iostats)
@@ -173,18 +175,19 @@ func (client *Client) PublishEvents(
 	}
 
 	if !client.connected {
+		fmt.Println("########### wmenezes: Client not connected ###########")
 		return data, ErrNotConnected
 	}
 
 	var failedEvents []outputs.Data
-
 	sendErr := error(nil)
-	for _, event := range data {
+	for index, event := range data {
 		sendErr = client.PublishEvent(event)
-		// TODO more gracefully handle failures return the failed events
-		// below instead of bailing out directly here:
 		if sendErr != nil {
-			return nil, sendErr
+			fmt.Println("########### wmenezes: Publish events failed for index ", index, " ###########")
+			// return the rest of the data with the error
+			failedEvents = data[index:]
+			break;
 		}
 	}
 
@@ -195,12 +198,16 @@ func (client *Client) PublishEvents(
 	ackedEvents.Add(int64(len(data) - len(failedEvents)))
 	eventsNotAcked.Add(int64(len(failedEvents)))
 	if len(failedEvents) > 0 {
+		fmt.Println("########### wmenezes: something failed? ###########")
 		return failedEvents, sendErr
 	}
 
+	fmt.Println("########### wmenezes: successfully published ", len(data), "events ###########")
 	return nil, nil
 }
 
+// If publishing the event fails return an error to retry later.
+// Returns nil if we should not retry
 func (client *Client) PublishEvent(data outputs.Data) error {
 	if !client.connected {
 		return ErrNotConnected
@@ -212,6 +219,7 @@ func (client *Client) PublishEvent(data outputs.Data) error {
 
 	status, _, err := client.request("POST", "", client.params, event)
 	if err != nil {
+		fmt.Println("########### wmenezes: ", status, err, " ###########")
 		logp.Warn("Fail to insert a single event: %s", err)
 		if err == ErrJSONEncodeFailed {
 			// don't retry unencodable values
@@ -219,13 +227,15 @@ func (client *Client) PublishEvent(data outputs.Data) error {
 		}
 	}
 	switch {
-	case status == 0: // event was not send yet
-		return nil
 	case status >= 500 || status == 429: // server error, retry
 		return err
 	case status >= 300 && status < 500:
 		// other error => don't retry
 		return nil
+	}
+
+	if !client.connected {
+		return ErrNotConnected
 	}
 
 	return nil
