@@ -18,6 +18,7 @@ type httpConfig struct {
 	TLS              *outputs.TLSConfig `config:"tls"`
 	MaxRetries       int                `config:"max_retries"`
 	Timeout          time.Duration      `config:"timeout"`
+	Headers          string             `config:"headers"`
 }
 
 var (

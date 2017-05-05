@@ -23,6 +23,7 @@ type Client struct {
 	// additional configs
 	compressionLevel int
 	proxyURL         *url.URL
+	headers    map[string]string
 }
 
 type ClientSettings struct {
@@ -35,6 +36,7 @@ type ClientSettings struct {
 	Pipeline           *outil.Selector
 	Timeout            time.Duration
 	CompressionLevel   int
+	headers            map[string]string
 }
 
 type Connection struct {
@@ -123,6 +125,7 @@ func NewClient(
 
 		compressionLevel: compression,
 		proxyURL:         s.Proxy,
+		headers:          s.headers,
 	}
 
 	return client, nil
@@ -143,6 +146,7 @@ func (client *Client) Clone() *Client {
 			Parameters:       nil, // XXX: do not pass params?
 			Timeout:          client.http.Timeout,
 			CompressionLevel: client.compressionLevel,
+			headers:          client.headers,
 		},
 	)
 	return c
@@ -217,7 +221,7 @@ func (client *Client) PublishEvent(data outputs.Data) error {
 
 	debugf("Publish event: %s", event)
 
-	status, _, err := client.request("POST", "", client.params, event)
+	status, _, err := client.request("POST", "", client.params, event, client.headers)
 	if err != nil {
 		fmt.Println("########### wmenezes: ", status, err, " ###########")
 		logp.Warn("Fail to insert a single event: %s", err)
@@ -245,24 +249,26 @@ func (conn *Connection) request(
 	method, path string,
 	params map[string]string,
 	body interface{},
+	headers map[string]string,
 ) (int, []byte, error) {
 	url := makeURL(conn.URL, path, "", params)
 	debugf("%s %s %v", method, url, body)
 
 	if body == nil {
-		return conn.execRequest(method, url, nil)
+		return conn.execRequest(method, url, nil, headers)
 	}
 
 	if err := conn.encoder.Marshal(body); err != nil {
 		logp.Warn("Failed to json encode body (%v): %#v", err, body)
 		return 0, nil, ErrJSONEncodeFailed
 	}
-	return conn.execRequest(method, url, conn.encoder.Reader())
+	return conn.execRequest(method, url, conn.encoder.Reader(), headers)
 }
 
 func (conn *Connection) execRequest(
 	method, url string,
 	body io.Reader,
+	headers map[string]string,
 ) (int, []byte, error) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
@@ -272,11 +278,19 @@ func (conn *Connection) execRequest(
 	if body != nil {
 		conn.encoder.AddHeader(&req.Header)
 	}
-	return conn.execHTTPRequest(req)
+	return conn.execHTTPRequest(req, headers)
 }
 
-func (conn *Connection) execHTTPRequest(req *http.Request) (int, []byte, error) {
+func (conn *Connection) execHTTPRequest(
+	req *http.Request,
+	headers map[string]string,
+) (int, []byte, error) {
+
 	req.Header.Add("Accept", "application/json")
+	for key, value := range headers {
+		req.Header.Add(key, value)
+	}
+
 	if conn.Username != "" || conn.Password != "" {
 		req.SetBasicAuth(conn.Username, conn.Password)
 	}
