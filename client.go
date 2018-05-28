@@ -13,6 +13,7 @@ import (
 	"github.com/elastic/beats/libbeat/outputs"
 	"github.com/elastic/beats/libbeat/outputs/outil"
 	"github.com/elastic/beats/libbeat/outputs/transport"
+	"github.com/elastic/beats/libbeat/publisher"
 )
 
 type Client struct {
@@ -23,6 +24,8 @@ type Client struct {
 	// additional configs
 	compressionLevel int
 	proxyURL         *url.URL
+
+	observer outputs.Observer
 }
 
 type ClientSettings struct {
@@ -35,6 +38,7 @@ type ClientSettings struct {
 	Pipeline           *outil.Selector
 	Timeout            time.Duration
 	CompressionLevel   int
+	Observer           outputs.Observer
 }
 
 type Connection struct {
@@ -60,6 +64,7 @@ var (
 	statWriteErrors = expvar.NewInt("libbeatHttpPublishWriteErrors")
 )
 
+// NewClient instantiate a client.
 func NewClient(
 	s ClientSettings,
 ) (*Client, error) {
@@ -80,14 +85,16 @@ func NewClient(
 		return nil, err
 	}
 
-	iostats := &transport.IOStats{
-		Read:        statReadBytes,
-		Write:       statWriteBytes,
-		ReadErrors:  statReadErrors,
-		WriteErrors: statWriteErrors,
+	// iostats := &transport.IOStats{
+	// 	Read:        statReadBytes,
+	// 	Write:       statWriteBytes,
+	// 	ReadErrors:  statReadErrors,
+	// 	WriteErrors: statWriteErrors,
+	// }
+	if st := s.Observer; st != nil {
+		dialer = transport.StatsDialer(dialer, st)
+		tlsDialer = transport.StatsDialer(tlsDialer, st)
 	}
-	dialer = transport.StatsDialer(dialer, iostats)
-	tlsDialer = transport.StatsDialer(tlsDialer, iostats)
 
 	params := s.Parameters
 
@@ -146,7 +153,7 @@ func (client *Client) Clone() *Client {
 	return c
 }
 
-func (conn *Connection) Connect(timeout time.Duration) error {
+func (conn *Connection) Connect() error {
 	conn.connected = true
 	return nil
 }
@@ -160,11 +167,22 @@ func (conn *Connection) Close() error {
 	return nil
 }
 
+func (client *Client) Publish(batch publisher.Batch) error {
+	events := batch.Events()
+	rest, err := client.publishEvents(events)
+	if len(rest) == 0 {
+		batch.ACK()
+	} else {
+		batch.RetryEvents(rest)
+	}
+	return err
+}
+
 // PublishEvents posts all events to the http endpoint. On error a slice with all
 // events not published will be returned.
-func (client *Client) PublishEvents(
-	data []outputs.Data,
-) ([]outputs.Data, error) {
+func (client *Client) publishEvents(
+	data []publisher.Event,
+) ([]publisher.Event, error) {
 	begin := time.Now()
 	publishEventsCallCount.Add(1)
 
@@ -176,7 +194,7 @@ func (client *Client) PublishEvents(
 		return data, ErrNotConnected
 	}
 
-	var failedEvents []outputs.Data
+	var failedEvents []publisher.Event
 
 	sendErr := error(nil)
 	for _, event := range data {
@@ -201,16 +219,17 @@ func (client *Client) PublishEvents(
 	return nil, nil
 }
 
-func (client *Client) PublishEvent(data outputs.Data) error {
+// PublishEvent publish a single event to output.
+func (client *Client) PublishEvent(data publisher.Event) error {
 	if !client.connected {
 		return ErrNotConnected
 	}
 
-	event := data.Event
+	event := data
 
 	debugf("Publish event: %s", event)
 
-	status, _, err := client.request("POST", "", client.params, event)
+	status, _, err := client.request("POST", "", client.params, event.Content)
 	if err != nil {
 		logp.Warn("Fail to insert a single event: %s", err)
 		if err == ErrJSONEncodeFailed {

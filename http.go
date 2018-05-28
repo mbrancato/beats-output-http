@@ -4,23 +4,16 @@ import (
 	"errors"
 	"net/url"
 	"strings"
-	"time"
 
+	"github.com/elastic/beats/libbeat/beat"
 	"github.com/elastic/beats/libbeat/common"
-	"github.com/elastic/beats/libbeat/common/op"
 	"github.com/elastic/beats/libbeat/logp"
 	"github.com/elastic/beats/libbeat/outputs"
-	"github.com/elastic/beats/libbeat/outputs/mode"
-	"github.com/elastic/beats/libbeat/outputs/mode/modeutil"
-	"github.com/elastic/beats/libbeat/outputs/transport"
 )
 
-type httpOutput struct {
-	mode mode.ConnectionMode
-}
-
 func init() {
-	outputs.RegisterOutputPlugin("http", New)
+	// outputs.RegisterOutputPlugin("http", New)
+	outputs.RegisterType("http", makeHTTP)
 }
 
 var (
@@ -35,59 +28,115 @@ var (
 	ErrJSONEncodeFailed = errors.New("json encode failed")
 )
 
-func New(beatName string, cfg *common.Config, _ int) (outputs.Outputer, error) {
-	output := &httpOutput{}
-	err := output.init(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return output, nil
-}
+// func <name> (params) return params {}
+// func <name> (params) ( return params) {}
+// func (object *)<name> (params) ( return params) {}
+// func (object *) <name> (params) return params {}
 
-func (out *httpOutput) init(cfg *common.Config) error {
+// func (out *httpOutput) init(cfg *common.Config) error {
+func makeHTTP(
+	beat beat.Info,
+	observer outputs.Observer,
+	cfg *common.Config,
+) (outputs.Group, error) {
 	config := defaultConfig
 	logp.Info("Initializing HTTP output")
+
 	if err := cfg.Unpack(&config); err != nil {
-		return err
+		return outputs.Fail(err)
 	}
 
 	tlsConfig, err := outputs.LoadTLSConfig(config.TLS)
 	if err != nil {
-		return err
+		return outputs.Fail(err)
 	}
 
-	clients, err := modeutil.MakeClients(cfg, makeClientFactory(tlsConfig, &config, out))
+	hosts, err := outputs.ReadHostList(cfg)
 	if err != nil {
-		return err
+		return outputs.Fail(err)
 	}
 
-	maxRetries := config.MaxRetries
-	maxAttempts := maxRetries + 1 // maximum number of send attempts (-1 = infinite)
-	if maxRetries < 0 {
-		maxAttempts = 0
-	}
+	//new client code
 
-	var waitRetry = time.Duration(1) * time.Second
-	var maxWaitRetry = time.Duration(60) * time.Second
-
-	loadBalance := config.LoadBalance
-	m, err := modeutil.NewConnectionMode(clients, modeutil.Settings{
-		Failover:     !loadBalance,
-		MaxAttempts:  maxAttempts,
-		Timeout:      config.Timeout,
-		WaitRetry:    waitRetry,
-		MaxWaitRetry: maxWaitRetry,
-	})
+	proxyURL, err := parseProxyURL(config.ProxyURL)
 	if err != nil {
-		return err
+		return outputs.Fail(err)
+	}
+	if proxyURL != nil {
+		logp.Info("Using proxy URL: %s", proxyURL)
 	}
 
-	out.mode = m
+	params := config.Params
+	if len(params) == 0 {
+		params = nil
+	}
 
-	return nil
+	clients := make([]outputs.NetworkClient, len(hosts))
+
+	for i, host := range hosts {
+		// esURL, err := common.MakeURL(config.Protocol, config.Path, host, 80)
+
+		logp.Info("Making client for host: " + host)
+		hostURL, err := getURL(config.Protocol, 80, config.Path, host)
+		if err != nil {
+			logp.Err("Invalid host param set: %s, Error: %v", host, err)
+			return outputs.Fail(err)
+		}
+
+		logp.Info("Final host URL: " + hostURL)
+
+		var client outputs.NetworkClient
+		client, err = NewClient(ClientSettings{
+			URL:              hostURL,
+			Proxy:            proxyURL,
+			TLS:              tlsConfig,
+			Username:         config.Username,
+			Password:         config.Password,
+			Parameters:       params,
+			Timeout:          config.Timeout,
+			CompressionLevel: config.CompressionLevel,
+		})
+		if err != nil {
+			return outputs.Fail(err)
+		}
+
+		// client = outputs.WithBackoff(client, config.Backoff.Init, config.Backoff.Max)
+		clients[i] = client
+	}
+
+	//end new client code
+
+	return outputs.SuccessNet(config.LoadBalance, 100, config.MaxRetries, clients)
+
+	/*
+		TODO: check the code. looks like no alternative
+		maxRetries := config.MaxRetries
+		maxAttempts := maxRetries + 1 // maximum number of send attempts (-1 = infinite)
+		if maxRetries < 0 {
+			maxAttempts = 0
+		}
+
+		var waitRetry = time.Duration(1) * time.Second
+		var maxWaitRetry = time.Duration(60) * time.Second
+
+		loadBalance := config.LoadBalance
+		m, err := modeutil.NewConnectionMode(clients, modeutil.Settings{
+			Failover:     !loadBalance,
+			MaxAttempts:  maxAttempts,
+			Timeout:      config.Timeout,
+			WaitRetry:    waitRetry,
+			MaxWaitRetry: maxWaitRetry,
+		})
+		if err != nil {
+			return err
+		}
+
+		out.mode = m
+
+		return nil*/
 }
 
-func makeClientFactory(
+/*func makeClientFactory(
 	tls *transport.TLSConfig,
 	config *httpConfig,
 	out *httpOutput,
@@ -127,29 +176,13 @@ func makeClientFactory(
 			CompressionLevel: config.CompressionLevel,
 		})
 	}
-}
-
-func (out *httpOutput) Close() error {
-	return nil
-}
-
-func (out *httpOutput) PublishEvent(
-	trans op.Signaler,
-	opts outputs.Options,
-	data outputs.Data,
-) error {
-	return out.mode.PublishEvent(trans, opts, data)
-}
-
-func (out *httpOutput) BulkPublish(
-	trans op.Signaler,
-	opts outputs.Options,
-	data []outputs.Data,
-) error {
-	return out.mode.PublishEvents(trans, opts, data)
-}
+}*/
 
 func parseProxyURL(raw string) (*url.URL, error) {
+	if raw == "" {
+		return nil, nil
+	}
+
 	url, err := url.Parse(raw)
 	if err == nil && strings.HasPrefix(url.Scheme, "http") {
 		return url, err

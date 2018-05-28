@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
+
+	"github.com/elastic/beats/libbeat/common"
 )
 
 type bodyEncoder interface {
@@ -35,11 +38,16 @@ type gzipEncoder struct {
 	gzip *gzip.Writer
 }
 
+type event struct {
+	Timestamp time.Time     `struct:"@timestamp"`
+	Fields    common.MapStr `struct:",inline"`
+}
+
 func newJSONEncoder(buf *bytes.Buffer) *jsonEncoder {
 	if buf == nil {
 		buf = bytes.NewBuffer(nil)
 	}
-	return &jsonEncoder{buf}
+	return &jsonEncoder{buf: buf}
 }
 
 func (b *jsonEncoder) Reset() {
@@ -89,7 +97,7 @@ func newGzipEncoder(level int, buf *bytes.Buffer) (*gzipEncoder, error) {
 		return nil, err
 	}
 
-	return &gzipEncoder{buf, w}, nil
+	return &gzipEncoder{buf: buf, gzip: w}, nil
 }
 
 func (b *gzipEncoder) Reset() {
