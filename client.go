@@ -9,6 +9,9 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/elastic/beats/libbeat/beat"
+	"github.com/elastic/beats/libbeat/common"
+
 	"github.com/elastic/beats/libbeat/logp"
 	"github.com/elastic/beats/libbeat/outputs"
 	"github.com/elastic/beats/libbeat/outputs/outil"
@@ -50,6 +53,11 @@ type Connection struct {
 	connected bool
 
 	encoder bodyEncoder
+}
+
+type event struct {
+	Timestamp time.Time     `struct:"@timestamp"`
+	Fields    common.MapStr `struct:",inline"`
 }
 
 // Metrics that can retrieved through the expvar web interface.
@@ -229,7 +237,7 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 
 	debugf("Publish event: %s", event)
 
-	status, _, err := client.request("POST", "", client.params, event.Content)
+	status, _, err := client.request("POST", "", client.params, makeEvent(&event.Content))
 	if err != nil {
 		logp.Warn("Fail to insert a single event: %s", err)
 		if err == ErrJSONEncodeFailed {
@@ -316,4 +324,9 @@ func closing(c io.Closer) {
 	if err != nil {
 		logp.Warn("Close failed with: %v", err)
 	}
+}
+
+//this should ideally be in enc.go
+func makeEvent(v *beat.Event) event {
+	return event{Timestamp: v.Timestamp.UTC(), Fields: v.Fields}
 }

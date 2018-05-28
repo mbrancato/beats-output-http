@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
-
-	"github.com/elastic/beats/libbeat/common"
 )
 
 type bodyEncoder interface {
@@ -36,11 +33,6 @@ type jsonEncoder struct {
 type gzipEncoder struct {
 	buf  *bytes.Buffer
 	gzip *gzip.Writer
-}
-
-type event struct {
-	Timestamp time.Time     `struct:"@timestamp"`
-	Fields    common.MapStr `struct:",inline"`
 }
 
 func newJSONEncoder(buf *bytes.Buffer) *jsonEncoder {
