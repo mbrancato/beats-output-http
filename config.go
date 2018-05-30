@@ -14,6 +14,8 @@ type httpConfig struct {
 	Password         string             `config:"password"`
 	ProxyURL         string             `config:"proxy_url"`
 	LoadBalance      bool               `config:"loadbalance"`
+	BatchPublish     bool               `config:"batch_publish"`
+	BatchSize        int                `config:"batch_size"`
 	CompressionLevel int                `config:"compression_level" validate:"min=0, max=9"`
 	TLS              *outputs.TLSConfig `config:"tls"`
 	MaxRetries       int                `config:"max_retries"`
@@ -27,6 +29,8 @@ var (
 		ProxyURL:         "",
 		Username:         "",
 		Password:         "",
+		BatchPublish:     false,
+		BatchSize:        100,
 		Timeout:          90 * time.Second,
 		CompressionLevel: 0,
 		TLS:              nil,

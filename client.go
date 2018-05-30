@@ -27,6 +27,7 @@ type Client struct {
 	// additional configs
 	compressionLevel int
 	proxyURL         *url.URL
+	batchPublish     bool
 
 	observer outputs.Observer
 }
@@ -42,6 +43,7 @@ type ClientSettings struct {
 	Timeout            time.Duration
 	CompressionLevel   int
 	Observer           outputs.Observer
+	BatchPublish       bool
 }
 
 type Connection struct {
@@ -60,16 +62,21 @@ type event struct {
 	Fields    common.MapStr `struct:",inline"`
 }
 
+type batchEvents struct {
+	Size   int     `json:"size" struct:"size"`
+	Events []event `json:"events" struct:"events"`
+}
+
 // Metrics that can retrieved through the expvar web interface.
 var (
 	ackedEvents            = expvar.NewInt("libbeatHttpPublishedAndAckedEvents")
 	eventsNotAcked         = expvar.NewInt("libbeatHttpPublishedButNotAckedEvents")
 	publishEventsCallCount = expvar.NewInt("libbeatHttpPublishEventsCallCount")
 
-	statReadBytes   = expvar.NewInt("libbeatHttpPublishReadBytes")
-	statWriteBytes  = expvar.NewInt("libbeatHttpPublishWriteBytes")
-	statReadErrors  = expvar.NewInt("libbeatHttpPublishReadErrors")
-	statWriteErrors = expvar.NewInt("libbeatHttpPublishWriteErrors")
+	// statReadBytes   = expvar.NewInt("libbeatHttpPublishReadBytes")
+	// statWriteBytes  = expvar.NewInt("libbeatHttpPublishWriteBytes")
+	// statReadErrors  = expvar.NewInt("libbeatHttpPublishReadErrors")
+	// statWriteErrors = expvar.NewInt("libbeatHttpPublishWriteErrors")
 )
 
 // NewClient instantiate a client.
@@ -136,6 +143,7 @@ func NewClient(
 
 		compressionLevel: compression,
 		proxyURL:         s.Proxy,
+		batchPublish:     s.BatchPublish,
 	}
 
 	return client, nil
@@ -156,6 +164,7 @@ func (client *Client) Clone() *Client {
 			Parameters:       nil, // XXX: do not pass params?
 			Timeout:          client.http.Timeout,
 			CompressionLevel: client.compressionLevel,
+			BatchPublish:     client.batchPublish,
 		},
 	)
 	return c
@@ -202,15 +211,27 @@ func (client *Client) publishEvents(
 		return data, ErrNotConnected
 	}
 
+	// logp.Info("complete data set: ", data)
+
 	var failedEvents []publisher.Event
 
 	sendErr := error(nil)
-	for _, event := range data {
-		sendErr = client.PublishEvent(event)
-		// TODO more gracefully handle failures return the failed events
-		// below instead of bailing out directly here:
+
+	if client.batchPublish {
+		//Publish events in bulk
+		debugf("Publishing events in batch")
+		sendErr = client.BatchPublishEvent(data)
 		if sendErr != nil {
 			return nil, sendErr
+		}
+	} else {
+		for _, event := range data {
+			sendErr = client.PublishEvent(event)
+			// TODO more gracefully handle failures return the failed events
+			// below instead of bailing out directly here:
+			if sendErr != nil {
+				return nil, sendErr
+			}
 		}
 	}
 
@@ -227,6 +248,45 @@ func (client *Client) publishEvents(
 	return nil, nil
 }
 
+// BatchPublishEvent publish a single event to output.
+func (client *Client) BatchPublishEvent(data []publisher.Event) error {
+	if !client.connected {
+		return ErrNotConnected
+	}
+
+	// var events []event
+	var events = make([]event, len(data))
+
+	// debugf("Publish event: %s", event)
+	for i, event := range data {
+		//make event
+		// events = append(events, makeEvent(&event.Content))
+		events[i] = makeEvent(&event.Content)
+	}
+
+	batch := batchEvents{Size: len(events), Events: events}
+
+	status, _, err := client.request("POST", "", client.params, batch)
+	if err != nil {
+		logp.Warn("Fail to insert a single event: %s", err)
+		if err == ErrJSONEncodeFailed {
+			// don't retry unencodable values
+			return nil
+		}
+	}
+	switch {
+	case status == 0: // event was not send yet
+		return nil
+	case status >= 500 || status == 429: // server error, retry
+		return err
+	case status >= 300 && status < 500:
+		// other error => don't retry
+		return nil
+	}
+
+	return nil
+}
+
 // PublishEvent publish a single event to output.
 func (client *Client) PublishEvent(data publisher.Event) error {
 	if !client.connected {
@@ -235,7 +295,7 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 
 	event := data
 
-	debugf("Publish event: %s", event)
+	// debugf("Publish event: %s", event)
 
 	status, _, err := client.request("POST", "", client.params, makeEvent(&event.Content))
 	if err != nil {
@@ -264,7 +324,7 @@ func (conn *Connection) request(
 	body interface{},
 ) (int, []byte, error) {
 	url := makeURL(conn.URL, path, "", params)
-	debugf("%s %s %v", method, url, body)
+	// debugf("%s %s %v", method, url, body)
 
 	if body == nil {
 		return conn.execRequest(method, url, nil)

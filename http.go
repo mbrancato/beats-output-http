@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/elastic/beats/libbeat/beat"
 	"github.com/elastic/beats/libbeat/common"
@@ -95,18 +96,20 @@ func makeHTTP(
 			Parameters:       params,
 			Timeout:          config.Timeout,
 			CompressionLevel: config.CompressionLevel,
+			BatchPublish:     config.BatchPublish,
 		})
 		if err != nil {
 			return outputs.Fail(err)
 		}
 
-		// client = outputs.WithBackoff(client, config.Backoff.Init, config.Backoff.Max)
+		// TOOD: Backoff to be implemented
+		client = outputs.WithBackoff(client, 1*time.Second, 60*time.Second)
 		clients[i] = client
 	}
 
 	//end new client code
 
-	return outputs.SuccessNet(config.LoadBalance, 100, config.MaxRetries, clients)
+	return outputs.SuccessNet(config.LoadBalance, config.BatchSize, config.MaxRetries, clients)
 
 	/*
 		TODO: check the code. looks like no alternative
