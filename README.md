@@ -10,7 +10,7 @@ Usage
 =====
 
 To add support for this output plugin to a beat, you
-have to import this plugin into your main beats package,
+have to import this plugin into your main beats package (elastic/beats/filebeat/main.go),
 like this:
 
 ```
@@ -31,10 +31,26 @@ func main() {
 
 ```
 
-Then configure the http output plugin in yourbeat.yaml:
+Then configure the http output plugin in filebeat.yaml:
 
 ```
 output:
   http:
-    hosts: ["some.example.com:80/foo"]
+    hosts: ["localhost:8002"]
+    protocol: "http"
+    path: "test/v1"
+    # parameters: "xyz"
+    max_retries: -1
+    timeout: 10s
+#    tls:
+#        enabled: false
+      #  verification_mode: "full"
+      #  supported_protocols: [...]
+      #  cipher_suites: [...]
+      #  curve_types: [...]
+      #  certificate_authorities: [...]
+      #  certificate: ...
+      #  key: ...
+      #  key_passphrase: ...
+
 ```

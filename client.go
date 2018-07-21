@@ -1,7 +1,6 @@
 package http
 
 import (
-	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +12,7 @@ import (
 	"github.com/elastic/beats/libbeat/common"
 
 	"github.com/elastic/beats/libbeat/logp"
+	"github.com/elastic/beats/libbeat/monitoring"
 	"github.com/elastic/beats/libbeat/outputs"
 	"github.com/elastic/beats/libbeat/outputs/outil"
 	"github.com/elastic/beats/libbeat/outputs/transport"
@@ -28,8 +28,8 @@ type Client struct {
 	compressionLevel int
 	proxyURL         *url.URL
 	batchPublish     bool
-
 	observer outputs.Observer
+	headers    map[string]string
 }
 
 type ClientSettings struct {
@@ -44,6 +44,7 @@ type ClientSettings struct {
 	CompressionLevel   int
 	Observer           outputs.Observer
 	BatchPublish       bool
+	headers            map[string]string
 }
 
 type Connection struct {
@@ -144,6 +145,7 @@ func NewClient(
 		compressionLevel: compression,
 		proxyURL:         s.Proxy,
 		batchPublish:     s.BatchPublish,
+		headers:          s.headers,
 	}
 
 	return client, nil
@@ -165,6 +167,7 @@ func (client *Client) Clone() *Client {
 			Timeout:          client.http.Timeout,
 			CompressionLevel: client.compressionLevel,
 			BatchPublish:     client.batchPublish,
+			headers:          client.headers,
 		},
 	)
 	return c
@@ -208,6 +211,7 @@ func (client *Client) publishEvents(
 	}
 
 	if !client.connected {
+		fmt.Println("########### wmenezes: Client not connected ###########")
 		return data, ErrNotConnected
 	}
 
@@ -222,7 +226,10 @@ func (client *Client) publishEvents(
 		debugf("Publishing events in batch")
 		sendErr = client.BatchPublishEvent(data)
 		if sendErr != nil {
-			return nil, sendErr
+			fmt.Println("########### wmenezes: Publish events failed for index ", index, " ###########")
+			// return the rest of the data with the error
+			failedEvents = data[index:]
+			break;
 		}
 	} else {
 		for _, event := range data {
@@ -242,9 +249,11 @@ func (client *Client) publishEvents(
 	ackedEvents.Add(int64(len(data) - len(failedEvents)))
 	eventsNotAcked.Add(int64(len(failedEvents)))
 	if len(failedEvents) > 0 {
+		fmt.Println("########### wmenezes: something failed? ###########")
 		return failedEvents, sendErr
 	}
 
+	fmt.Println("########### wmenezes: successfully published ", len(data), "events ###########")
 	return nil, nil
 }
 
@@ -297,8 +306,9 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 
 	// debugf("Publish event: %s", event)
 
-	status, _, err := client.request("POST", "", client.params, makeEvent(&event.Content))
+	status, _, err := client.request("POST", "", client.params, makeEvent(&event.Content), client.headers)
 	if err != nil {
+		fmt.Println("########### wmenezes: ", status, err, " ###########")
 		logp.Warn("Fail to insert a single event: %s", err)
 		if err == ErrJSONEncodeFailed {
 			// don't retry unencodable values
@@ -306,13 +316,15 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 		}
 	}
 	switch {
-	case status == 0: // event was not send yet
-		return nil
 	case status >= 500 || status == 429: // server error, retry
 		return err
 	case status >= 300 && status < 500:
 		// other error => don't retry
 		return nil
+	}
+
+	if !client.connected {
+		return ErrNotConnected
 	}
 
 	return nil
@@ -322,24 +334,26 @@ func (conn *Connection) request(
 	method, path string,
 	params map[string]string,
 	body interface{},
+	headers map[string]string,
 ) (int, []byte, error) {
 	url := makeURL(conn.URL, path, "", params)
 	// debugf("%s %s %v", method, url, body)
 
 	if body == nil {
-		return conn.execRequest(method, url, nil)
+		return conn.execRequest(method, url, nil, headers)
 	}
 
 	if err := conn.encoder.Marshal(body); err != nil {
 		logp.Warn("Failed to json encode body (%v): %#v", err, body)
 		return 0, nil, ErrJSONEncodeFailed
 	}
-	return conn.execRequest(method, url, conn.encoder.Reader())
+	return conn.execRequest(method, url, conn.encoder.Reader(), headers)
 }
 
 func (conn *Connection) execRequest(
 	method, url string,
 	body io.Reader,
+	headers map[string]string,
 ) (int, []byte, error) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
@@ -349,11 +363,19 @@ func (conn *Connection) execRequest(
 	if body != nil {
 		conn.encoder.AddHeader(&req.Header)
 	}
-	return conn.execHTTPRequest(req)
+	return conn.execHTTPRequest(req, headers)
 }
 
-func (conn *Connection) execHTTPRequest(req *http.Request) (int, []byte, error) {
+func (conn *Connection) execHTTPRequest(
+	req *http.Request,
+	headers map[string]string,
+) (int, []byte, error) {
+
 	req.Header.Add("Accept", "application/json")
+	for key, value := range headers {
+		req.Header.Add(key, value)
+	}
+
 	if conn.Username != "" || conn.Password != "" {
 		req.SetBasicAuth(conn.Username, conn.Password)
 	}

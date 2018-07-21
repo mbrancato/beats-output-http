@@ -168,6 +168,14 @@ func makeHTTP(
 			params = nil
 		}
 
+		headers := make(map[string]string)
+		fields := strings.Split(config.Headers, "|")
+		if len(fields) % 2 == 0 {
+			for index := 0; index < len(fields); index+=2  {
+				headers[fields[index]] = fields[index+1]
+			}
+		}
+
 		return NewClient(ClientSettings{
 			URL:              hostURL,
 			Proxy:            proxyURL,
@@ -177,6 +185,7 @@ func makeHTTP(
 			Parameters:       params,
 			Timeout:          config.Timeout,
 			CompressionLevel: config.CompressionLevel,
+			headers:          headers,
 		})
 	}
 }*/
