@@ -9,48 +9,47 @@ POSTs events to an HTTP endpoint.
 Usage
 =====
 
-To add support for this output plugin to a beat, you
-have to import this plugin into your main beats package (elastic/beats/filebeat/main.go),
+To add support for this output plugin to a beat, you have to import this
+plugin into your main beats package (e.g. elastic/beats/filebeat/main.go),
 like this:
 
 ```
 package main
 
 import (
-	"os"
+  "os"
 
-	"github.com/elastic/beats/filebeat/cmd"
-	_ "github.com/sudhircirra/beats-output-http"
+  "github.com/elastic/beats/filebeat/cmd"
+  _ "github.com/sudhircirra/beats-output-http"
 )
 
 func main() {
-	if err := cmd.RootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+  if err := cmd.RootCmd.Execute(); err != nil {
+    os.Exit(1)
+  }
 }
 
 ```
 
-Then configure the http output plugin in filebeat.yaml:
+Then configure the http output plugin in your beat config (e.g. filebeat.yml):
 
 ```
 output:
   http:
-    hosts: ["localhost:8002"]
+    hosts: ["host.example.com:80"]
     protocol: "http"
     path: "test/v1"
     # parameters: "xyz"
     max_retries: -1
     timeout: 10s
 #    tls:
-#        enabled: false
-      #  verification_mode: "full"
-      #  supported_protocols: [...]
-      #  cipher_suites: [...]
-      #  curve_types: [...]
-      #  certificate_authorities: [...]
-      #  certificate: ...
-      #  key: ...
-      #  key_passphrase: ...
-
+#      enabled: false
+#      verification_mode: "full"
+#      supported_protocols: [...]
+#      cipher_suites: [...]
+#      curve_types: [...]
+#      certificate_authorities: [...]
+#      certificate: ...
+#      key: ...
+#      key_passphrase: ...
 ```
