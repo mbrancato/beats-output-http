@@ -99,6 +99,7 @@ func makeHTTP(
       CompressionLevel: config.CompressionLevel,
       BatchPublish:     config.BatchPublish,
       headers:          headers,
+      ContentType:      config.ContentType,
     })
 
     if err != nil {

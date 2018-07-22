@@ -46,6 +46,7 @@ type ClientSettings struct {
   Observer           outputs.Observer
   BatchPublish       bool
   headers            map[string]string
+  ContentType        string
 }
 
 type Connection struct {
@@ -55,6 +56,7 @@ type Connection struct {
   http      *http.Client
   connected bool
   encoder bodyEncoder
+  ContentType string
 }
 
 type eventraw map[string]json.RawMessage
@@ -122,6 +124,7 @@ func NewClient(	s ClientSettings,) (*Client, error) {
       URL:      s.URL,
       Username: s.Username,
       Password: s.Password,
+      ContentType: s.ContentType,
       http: &http.Client{
         Transport: &http.Transport{
           Dial:    dialer.Dial,
@@ -160,6 +163,7 @@ func (client *Client) Clone() *Client {
       CompressionLevel: client.compressionLevel,
       BatchPublish:     client.batchPublish,
       headers:          client.headers,
+      ContentType:      client.ContentType,
     },
   )
   return c
@@ -333,7 +337,7 @@ func (conn *Connection) request(
   return conn.execRequest(method, url, conn.encoder.Reader(), headers)
 }
 
-func (conn *Connection) execRequest(method, url string,	body io.Reader, headers map[string]string,) (int, []byte, error) {
+func (conn *Connection) execRequest(method, url string, body io.Reader, headers map[string]string,) (int, []byte, error) {
   req, err := http.NewRequest(method, url, body)
   if err != nil {
     logp.Warn("Failed to create request", err)
@@ -347,6 +351,7 @@ func (conn *Connection) execRequest(method, url string,	body io.Reader, headers 
 
 func (conn *Connection) execHTTPRequest(req *http.Request, headers map[string]string,) (int, []byte, error) {
   req.Header.Add("Accept", "application/json")
+  req.Header.Add("Content-Type", conn.ContentType)
 
   for key, value := range headers {
   	req.Header.Add(key, value)

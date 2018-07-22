@@ -47,7 +47,6 @@ func (b *jsonEncoder) Reset() {
 }
 
 func (b *jsonEncoder) AddHeader(header *http.Header) {
-  header.Add("Content-Type", "application/json; charset=UTF-8")
 }
 
 func (b *jsonEncoder) Reader() io.Reader {
@@ -103,7 +102,6 @@ func (b *gzipEncoder) Reader() io.Reader {
 }
 
 func (b *gzipEncoder) AddHeader(header *http.Header) {
-  header.Add("Content-Type", "application/json; charset=UTF-8")
   header.Add("Content-Encoding", "gzip")
 }
 

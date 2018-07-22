@@ -21,6 +21,7 @@ type httpConfig struct {
   MaxRetries       int                `config:"max_retries"`
   Timeout          time.Duration      `config:"timeout"`
   Headers          string             `config:"headers"`
+  ContentType      string             `config:"content_type"`
 }
 
 var (
@@ -37,6 +38,7 @@ var (
     TLS:              nil,
     MaxRetries:       3,
     LoadBalance:      true,
+    ContentType:      "application/json; charset=UTF-8",
   }
 )
 
