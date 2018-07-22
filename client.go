@@ -8,6 +8,7 @@ import (
   "net/http"
   "net/url"
   "time"
+  "encoding/json"
 
   "github.com/elastic/beats/libbeat/beat"
   "github.com/elastic/beats/libbeat/common"
@@ -56,9 +57,11 @@ type Connection struct {
   encoder bodyEncoder
 }
 
+type eventraw map[string]json.RawMessage
+
 type event struct {
-  Timestamp time.Time     `struct:"@timestamp"`
-  Fields    common.MapStr `struct:",inline"`
+  Timestamp time.Time     `json:"@timestamp"`
+  Fields    common.MapStr `json:"-"`
 }
 
 type batchEvents struct {
@@ -247,7 +250,7 @@ func (client *Client) BatchPublishEvent(data []publisher.Event) error {
   }
 
   // var events []event
-  var events = make([]event, len(data))
+  var events = make([]eventraw, len(data))
 
   // debugf("Publish event: %s", event)
   for i, event := range data {
@@ -256,9 +259,7 @@ func (client *Client) BatchPublishEvent(data []publisher.Event) error {
     events[i] = makeEvent(&event.Content)
   }
 
-  batch := batchEvents{Size: len(events), Events: events}
-
-  status, _, err := client.request("POST", "", client.params, batch, client.headers)
+  status, _, err := client.request("POST", "", client.params, events, client.headers)
   if err != nil {
     logp.Warn("Fail to insert a single event: %s", err)
     if err == ErrJSONEncodeFailed {
@@ -384,6 +385,31 @@ func closing(c io.Closer) {
 }
 
 //this should ideally be in enc.go
-func makeEvent(v *beat.Event) event {
-  return event{Timestamp: v.Timestamp.UTC(), Fields: v.Fields}
+func makeEvent(v *beat.Event) map[string]json.RawMessage {
+  // Inline not supported, HT: https://stackoverflow.com/questions/49901287/embed-mapstringstring-in-go-json-marshaling-without-extra-json-property-inlin
+  type event_ event // prevent recursion
+
+  e := event{Timestamp: v.Timestamp.UTC(), Fields: v.Fields}
+
+  b, err := json.Marshal(event_(e))
+  if err != nil {
+    logp.Warn("Error encoding event to JSON:", err)
+  }
+
+  var eventmap map[string]json.RawMessage
+  err = json.Unmarshal(b, &eventmap)
+  if err != nil {
+    logp.Warn("Error decoding JSON to map:", err)
+  }
+
+  // Add the individual fields to the map, flatten "Fields"
+  for j, k := range e.Fields {
+    b, err = json.Marshal(k)
+    if err != nil {
+      logp.Warn("Error encoding map to JSON:", err)
+    }
+    eventmap[j] = b
+  }
+
+  return eventmap
 }
