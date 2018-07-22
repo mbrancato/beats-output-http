@@ -79,7 +79,13 @@ func makeHTTP(
 
   for i, host := range hosts {
     logp.Info("Making client for host: " + host)
-    hostURL, err := getURL(config.Protocol, 80, config.Path, host)
+    var port int
+    if config.Protocol == "https" {
+      port = 443
+    } else {
+      port = 80
+    }
+    hostURL, err := getURL(config.Protocol, port, config.Path, host)
     if err != nil {
       logp.Err("Invalid host param set: %s, Error: %v", host, err)
       return outputs.Fail(err)
