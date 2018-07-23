@@ -1,5 +1,6 @@
 #-------------------------- HTTP output ------------------------------
 #output.http:
+# Hosts currently support 'host' or 'host:port' only
 #    hosts: ["host.example.com:443"]
 #
 # Optional further settings:
@@ -13,6 +14,7 @@
 #    batch_publish: true
 #    batch_size: 5
 #    max_retries: -1
+#    content_type: "application/custom"
 #    max_retries: 3
 #    timeout: 90 seconds
 #    tls:

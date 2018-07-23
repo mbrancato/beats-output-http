@@ -4,7 +4,7 @@ beats-output-http
 Outputter for the Elastic Beats platform that simply
 POSTs events to an HTTP endpoint.
 
-[![Build Status](https://travis-ci.org/raboof/beats-output-http.svg?branch=master)](https://travis-ci.org/raboof/beats-output-http)
+[![Build Status](https://travis-ci.org/mbrancato/beats-output-http.svg?branch=master)](https://travis-ci.org/mbrancato/beats-output-http)
 
 Usage
 =====
@@ -20,7 +20,7 @@ import (
   "os"
 
   "github.com/elastic/beats/filebeat/cmd"
-  _ "github.com/sudhircirra/beats-output-http"
+  _ "github.com/mbrancato/beats-output-http"
 )
 
 func main() {
@@ -36,20 +36,7 @@ Then configure the http output plugin in your beat config (e.g. filebeat.yml):
 ```
 output:
   http:
-    hosts: ["host.example.com:80"]
+    hosts: ["host.example.com"]
     protocol: "http"
-    path: "test/v1"
-    # parameters: "xyz"
-    max_retries: -1
-    timeout: 10s
-#    tls:
-#      enabled: false
-#      verification_mode: "full"
-#      supported_protocols: [...]
-#      cipher_suites: [...]
-#      curve_types: [...]
-#      certificate_authorities: [...]
-#      certificate: ...
-#      key: ...
-#      key_passphrase: ...
+    path: "messages"
 ```
