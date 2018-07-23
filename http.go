@@ -5,6 +5,8 @@ import (
   "net/url"
   "strings"
   "time"
+  "fmt"
+  "strconv"
 
   "github.com/elastic/beats/libbeat/beat"
   "github.com/elastic/beats/libbeat/common"
@@ -79,15 +81,38 @@ func makeHTTP(
 
   for i, host := range hosts {
     logp.Info("Making client for host: " + host)
+    var name string
     var port int
     if config.Protocol == "https" {
       port = 443
-    } else {
+    } else if config.Protocol == "http"{
       port = 80
+    } else {
+      logp.Warn("Unknown protocol: %s", config.Protocol)
     }
-    hostURL, err := getURL(config.Protocol, port, config.Path, host)
+    hostparts := strings.Split(host, ":")
+
+    if len(hostparts) == 1 {
+      name = hostparts[0]
+      for index := 0; index < len(fields); index+=2  {
+        logp.Debug("header field: %s %s", fields[index], fields[index+1])
+        headers[fields[index]] = fields[index+1]
+      }
+    } else if len(hostparts) == 2 {
+      name = hostparts[0]
+      port, err = strconv.Atoi(hostparts[1])
+      if err != nil {
+        logp.Err("Invalid port number: %v, Error: %v", hostparts[1], err)
+        return outputs.Fail(err)
+      }
+    } else {
+      logp.Err("Unable to parse host:port from: %v", host)
+    }
+
+    //hostURL, err := getURL(config.Protocol, port, config.Path, host)
+    hostURL := fmt.Sprintf("%v://%v:%v/%v", config.Protocol, name, port, config.Path)
     if err != nil {
-      logp.Err("Invalid host param set: %s, Error: %v", host, err)
+      logp.Err("Invalid host param set: %s, Error: %v", name, err)
       return outputs.Fail(err)
     }
 
