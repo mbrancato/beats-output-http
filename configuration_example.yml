@@ -10,7 +10,8 @@
 #    proxy_url: "http://localhost:8080"
 #    loadbalance: true
 #    compression_level: 0
-#    headers: "Authorization|XXXXXXXXXXXXXXXXXX"
+#    headers: 
+#      Authorization: "XXXXXXXXXXXXXXXXXX"
 #    batch_publish: true
 #    batch_size: 5
 #    max_retries: -1
