@@ -20,6 +20,7 @@ import (
 	"github.com/elastic/beats/libbeat/publisher"
 )
 
+// Client struct
 type Client struct {
 	Connection
 	tlsConfig *transport.TLSConfig
@@ -33,6 +34,7 @@ type Client struct {
 	headers          map[string]string
 }
 
+// ClientSettings struct
 type ClientSettings struct {
 	URL                string
 	Proxy              *url.URL
@@ -49,6 +51,7 @@ type ClientSettings struct {
 	ContentType        string
 }
 
+// Connection struct
 type Connection struct {
 	URL         string
 	Username    string
@@ -277,11 +280,11 @@ func (client *Client) BatchPublishEvent(data []publisher.Event) error {
 	}
 
 	switch {
-	case status >= 500 || status == 429: // server error, retry
-		return err
-	case status >= 300 && status < 500:
-		// other error => don't retry
+	case status == 500 || status == 400: //server error or bad input, don't retry
 		return nil
+	case status >= 300:
+		// retry
+		return err
 	}
 
 	return nil
@@ -307,11 +310,11 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 	}
 
 	switch {
-	case status >= 500 || status == 429: // server error, retry
-		return err
-	case status >= 300 && status < 500:
-		// other error => don't retry
+	case status == 500 || status == 400: //server error or bad input, don't retry
 		return nil
+	case status >= 300:
+		// retry
+		return err
 	}
 
 	if !client.connected {
@@ -344,7 +347,7 @@ func (conn *Connection) request(
 func (conn *Connection) execRequest(method, url string, body io.Reader, headers map[string]string) (int, []byte, error) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		logp.Warn("Failed to create request", err)
+		logp.Warn("Failed to create request: %v", err)
 		return 0, nil, err
 	}
 	if body != nil {
@@ -402,20 +405,20 @@ func makeEvent(v *beat.Event) map[string]json.RawMessage {
 
 	b, err := json.Marshal(event_(e))
 	if err != nil {
-		logp.Warn("Error encoding event to JSON:", err)
+		logp.Warn("Error encoding event to JSON: %v", err)
 	}
 
 	var eventmap map[string]json.RawMessage
 	err = json.Unmarshal(b, &eventmap)
 	if err != nil {
-		logp.Warn("Error decoding JSON to map:", err)
+		logp.Warn("Error decoding JSON to map: %v", err)
 	}
 
 	// Add the individual fields to the map, flatten "Fields"
 	for j, k := range e.Fields {
 		b, err = json.Marshal(k)
 		if err != nil {
-			logp.Warn("Error encoding map to JSON:", err)
+			logp.Warn("Error encoding map to JSON: %v", err)
 		}
 		eventmap[j] = b
 	}

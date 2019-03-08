@@ -22,6 +22,12 @@ type httpConfig struct {
 	Timeout          time.Duration      `config:"timeout"`
 	Headers          map[string]string  `config:"headers"`
 	ContentType      string             `config:"content_type"`
+	Backoff          backoff            `config:"backoff"`
+}
+
+type backoff struct {
+	Init time.Duration
+	Max  time.Duration
 }
 
 var (
@@ -39,6 +45,10 @@ var (
 		MaxRetries:       3,
 		LoadBalance:      true,
 		ContentType:      "application/json; charset=UTF-8",
+		Backoff: backoff{
+			Init: 1 * time.Second,
+			Max:  60 * time.Second,
+		},
 	}
 )
 

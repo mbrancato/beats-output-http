@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/elastic/beats/libbeat/beat"
 	"github.com/elastic/beats/libbeat/common"
@@ -122,8 +121,7 @@ func makeHTTP(
 			return outputs.Fail(err)
 		}
 
-		// TODO: Backoff to be implemented
-		client = outputs.WithBackoff(client, 1*time.Second, 60*time.Second)
+		client = outputs.WithBackoff(client, config.Backoff.Init, config.Backoff.Max)
 		clients[i] = client
 	}
 

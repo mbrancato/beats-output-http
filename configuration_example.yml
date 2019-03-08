@@ -11,13 +11,16 @@
 #    loadbalance: true
 #    compression_level: 0
 #    headers: 
-#      Authorization: "XXXXXXXXXXXXXXXXXX"
+#        Authorization: "XXXXXXXXXXXXXXXXXX"
 #    batch_publish: true
 #    batch_size: 5
 #    max_retries: -1
 #    content_type: "application/custom"
 #    max_retries: 3
 #    timeout: 90 seconds
+#    backoff:
+#        init: 1
+#        max: 60
 #    tls:
 #        enabled: true
 #        verification_mode: "full"
