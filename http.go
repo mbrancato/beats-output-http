@@ -14,7 +14,6 @@ import (
 )
 
 func init() {
-	// outputs.RegisterOutputPlugin("http", New)
 	outputs.RegisterType("http", makeHTTP)
 }
 

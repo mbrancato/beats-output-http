@@ -149,6 +149,7 @@ func NewClient(s ClientSettings) (*Client, error) {
 	return client, nil
 }
 
+// Clone clones a client.
 func (client *Client) Clone() *Client {
 	// when cloning the connection callback and params are not copied. A
 	// client's close is for example generated for topology-map support. With params
@@ -172,15 +173,13 @@ func (client *Client) Clone() *Client {
 	return c
 }
 
+// Connect establishes a connection to the clients sink.
 func (conn *Connection) Connect() error {
 	conn.connected = true
 	return nil
 }
 
-func (conn *Connection) IsConnected() bool {
-	return conn.connected
-}
-
+// Close closes a connection.
 func (conn *Connection) Close() error {
 	conn.connected = false
 	return nil
@@ -190,6 +189,7 @@ func (client *Client) String() string {
 	return client.URL
 }
 
+// Publish sends events to the clients sink.
 func (client *Client) Publish(batch publisher.Batch) error {
 	events := batch.Events()
 	rest, err := client.publishEvents(events)
@@ -399,11 +399,11 @@ func closing(c io.Closer) {
 //this should ideally be in enc.go
 func makeEvent(v *beat.Event) map[string]json.RawMessage {
 	// Inline not supported, HT: https://stackoverflow.com/questions/49901287/embed-mapstringstring-in-go-json-marshaling-without-extra-json-property-inlin
-	type event_ event // prevent recursion
+	type event0 event // prevent recursion
 
 	e := event{Timestamp: v.Timestamp.UTC(), Fields: v.Fields}
 
-	b, err := json.Marshal(event_(e))
+	b, err := json.Marshal(event0(e))
 	if err != nil {
 		logp.Warn("Error encoding event to JSON: %v", err)
 	}
