@@ -280,10 +280,11 @@ func (client *Client) BatchPublishEvent(data []publisher.Event) error {
 	}
 
 	switch {
-	case status == 500 || status == 400: //server error or bad input, don't retry
+	// Retryable HTTP codes: https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html#plugins-outputs-http-retryable_codes
+	case status >= 500 || status == 429: // server error, retry
 		return nil
-	case status >= 300:
-		// retry
+	case status >= 300 && status < 500:
+		// other error => don't retry
 		return err
 	}
 
@@ -310,10 +311,11 @@ func (client *Client) PublishEvent(data publisher.Event) error {
 	}
 
 	switch {
-	case status == 500 || status == 400: //server error or bad input, don't retry
+	// Retryable HTTP codes: https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html#plugins-outputs-http-retryable_codes
+	case status >= 500 || status == 429: // server error, retry
 		return nil
-	case status >= 300:
-		// retry
+	case status >= 300 && status < 500:
+		// other error => don't retry
 		return err
 	}
 
