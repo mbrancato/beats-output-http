@@ -4,6 +4,8 @@ beats-output-http
 Outputter for the Elastic Beats platform that simply
 POSTs events to an HTTP endpoint.
 
+[![Build Status](https://travis-ci.org/mbrancato/beats-output-http.svg?branch=master)](https://travis-ci.org/mbrancato/beats-output-http)
+
 Usage
 =====
 
@@ -18,7 +20,7 @@ import (
   "os"
 
   "github.com/elastic/beats/filebeat/cmd"
-  _ "github.com/thefire/beats-output-http"
+  _ "github.com/mbrancato/beats-output-http"
 )
 
 func main() {
@@ -39,4 +41,4 @@ output:
     path: "messages"
 ```
 
-More details of config options can be found in the [configuration_example.yml](https://github.com/thefire/beats-output-http/blob/master/configuration_example.yml) file.
+More details of config options can be found in the [configuration_example.yml](https://github.com/mbrancato/beats-output-http/blob/master/configuration_example.yml) file.
